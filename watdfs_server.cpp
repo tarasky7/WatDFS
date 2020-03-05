@@ -122,7 +122,6 @@ int watdfs_mknod(int *argTypes, void **args) {
 
     int sys_ret = mknod(full_path, mode, dev);
 
-
     if (sys_ret < 0) {
         DLOG("ret is %d\n", -errno);
         *ret = -errno;

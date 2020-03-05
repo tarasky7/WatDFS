@@ -208,31 +208,65 @@ int watdfs_cli_fgetattr(void *userdata, const char *path, struct stat *statbuf,
 int watdfs_cli_mknod(void *userdata, const char *path, mode_t mode, dev_t dev) {
     // Called to create a file.
 
+    global_info *p = (global_info *)userdata;
+
     if (file_is_open(userdata, path)) {
+        if (p->files_info[path]->flags == O_RDONLY) {
+            return -EMFILE;
+        }
 
+        // TODO: Check freshness.
     }
 
-    int fxn_ret = watdfs_cli_mknod_rpc(userdata, path, mode, dev);
-    // The rpc call or the server mknod call failed.
-    if (fxn_ret < 0) {
-        return fxn_ret;
-    }
+    struct fuse_file_info *fi = (struct fuse_file_info *) malloc(sizeof(struct fuse_file_info));
 
-    // Create local file.
     char *full_path = get_full_path(((struct global_info *)userdata)->path_to_cache, path);
     
-    int sys_ret = mknod(full_path, mode, dev);
-    
-    if (sys_ret < 0) {  // Sys call failed.
-        fxn_ret = -EINVAL;
-    } else {
-        fxn_ret = sys_ret;
-    }
+    fi->flags = O_RDWR;
 
-    free(full_path);
-    
-    // return -ENOSYS;
-    return fxn_ret;
+    int fxn_ret = watdfs_cli_open(userdata, path, fi);
+
+    if (fxn_ret < 0) {
+        if (fxn_ret == err_for_write_mutual) {
+            // File already opened in write mode.
+            free(fi);
+            free(full_path);
+            return fxn_ret;
+        }
+
+        // File does not exist on server.
+        fxn_ret = watdfs_cli_mknod_rpc(userdata, path, mode, dev);
+
+        if (fxn_ret < 0) {
+            free(fi);
+            free(full_path);
+            return fxn_ret;
+        }
+
+        int sys_ret = mknod(full_path, mode, dev);
+        
+        if (sys_ret < 0) {  // Sys call failed.
+            fxn_ret = -EINVAL;
+        } else {
+            fxn_ret = sys_ret;
+        }
+
+        free(full_path);
+        free(fi);
+        return fxn_ret;
+    }
+    else {
+        // File exists on server.
+        fxn_ret = watdfs_cli_release(useradata, path, fi);
+
+        if (fxn_ret >= 0) {
+            fxn_ret = -EEXIST;
+        }
+
+        free(fi);
+        free(full_path);
+        return fxn_ret;
+    }
 }
 
 int watdfs_cli_open(void *userdata, const char *path,
@@ -268,7 +302,8 @@ int watdfs_cli_open(void *userdata, const char *path,
 
     if (fxn_ret >= 0) {
         // Add file path to the set of opened files. This should be done when open succeeded.
-        (p->opened_files.insert(path);
+        p->opened_files.insert(path);
+        p->files_info[path]->flags = fi->flags & O_ACCMODE;
     }
 
     return fxn_ret;
@@ -350,6 +385,8 @@ int watdfs_cli_truncate(void *userdata, const char *path, off_t newsize) {
     // but should succeed if the file has the write permissions."
     // What does this mean?
 
+    global_info *p = (global_info *)userdata;
+
     char *full_path = get_full_path(((global_info *)userdata)->path_to_cache, path);
     
     struct fuse_file_info *fi = (struct fuse_file_info *) malloc(sizeof(struct fuse_file_info));
@@ -360,30 +397,42 @@ int watdfs_cli_truncate(void *userdata, const char *path, off_t newsize) {
         // Open file and then release.
         int fxn_ret = watdfs_cli_open(userdata, path, fi);
         if (fxn_ret < 0) {
+            free(full_path);
+            free(fi);
             return fxn_ret;
         }
 
         fxn_ret = truncate(full_path, newsize);
 
         if (fxn_ret < 0) {
+            free(full_path);
+            free(fi);
             return -errno;
         }
 
         fxn_ret = watdfs_cli_release(userdata, path, fi);
-
+        
+        free(full_path);
+        free(fi);
         return fxn_ret;
+    }
+
+    if (p->files_info[path]->flags == O_RDONLY) {
+        free(full_path);
+        free(fi);
+        return -EMFILE;
     }
 
     int fxn_ret = truncate(full_path, newsize);
 
     if (fxn_ret < 0) {
-        if (errno == EINVAL) {
-            // The file is not in write mode.
-            return -EMFILE;
-        }
-        return -errno;
+        fxn_ret = -errno;
     }
 
+    // TODO: Write freshness.
+    
+    free(full_path);
+    free(fi);
     return fxn_ret;
     // return -ENOSYS;
 }
@@ -403,6 +452,8 @@ int watdfs_cli_utimens(void *userdata, const char *path,
     // Change file access and modification times.
     char *full_path = get_full_path(((global_info *)userdata)->path_to_cache, path);
 
+    global_info *p = (global_info *)userdata;
+
     struct fuse_file_info *fi = (struct fuse_file_info *) malloc(sizeof(struct fuse_file_info));
     
     fi->flags = O_RDWR;
@@ -410,34 +461,32 @@ int watdfs_cli_utimens(void *userdata, const char *path,
     if (!file_is_open(userdata, path)) {
         int fxn_ret = watdfs_cli_open(userdata, path, fi);
         if (fxn_ret < 0) {
+            free(fi);
+            free(full_path);
             return fxn_ret;
         }
 
         fxn_ret = utimensat(0, full_path, ts, 0);
 
         if (fxn_ret < 0) {
+            free(fi);
+            free(full_path);
             return -errno;
         }
 
         fxn_ret = watdfs_cli_release(userdata, path, fi);
 
+        free(fi);
+        free(full_path);
         return fxn_ret;
     }
 
-    struct stat *statbuf = new struct stat;
-    int fxn_ret = watdfs_cli_getattr_rpc(userdata, path, statbuf);
-
-    if (fxn_ret < 0) {
-        // Getattr rpc call failed.
-        DLOG("Getattr rpc call failed.\n");
-        free(full_path);
-        delete statbuf;
-        return sys_ret;
-    }
-
-    int flag = statbuf->st_mode;
+    int flag = p->files_info[path]->flags;
 
     if (flag == O_RDONLY) {
+        free(full_path);
+        free(fi);
+        delete statbuf;
         return -EMFILE;
     }
 
@@ -447,6 +496,9 @@ int watdfs_cli_utimens(void *userdata, const char *path,
         fxn_ret = -errno;
     }
 
+    free(full_path);
+    free(fi);
+    delete statbuf;
     return fxn_ret;
     // return -ENOSYS;
 }
