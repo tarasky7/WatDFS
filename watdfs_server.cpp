@@ -5,7 +5,7 @@
 
 // *****
 // Don't forget to delete the include file.
-// #include "watdfs_client.h"
+#include "watdfs_client.h"
 // *****
 #include "rpc.h"
 #include "debug.h"
@@ -19,6 +19,16 @@ INIT_LOG
 #include <cstdlib>
 
 #include <fuse.h>
+
+#include <map>
+
+struct file_status {
+    int open_mode;  // 0 for read, 1 for write.
+    int open_number;    // Number of files opened.
+    rw_lock_t *lock;
+}
+
+std::map<const char *, struct file_status *> files_status;
 
 // Global state server_persist_dir.
 char *server_persist_dir = nullptr;
@@ -141,6 +151,42 @@ int watdfs_open(int *argTypes, void **args) {
 
     *ret = 0;
 
+    if (files_status.find(short_path) != files_status.end() && files_status[short_path]->open_number > 0) {
+        // File has been opened.
+        int status = files_status[short_path]->open_mode;
+        if (status == 0) {
+            // Open in read mode.
+            if (fi->flags & O_ACCMODE != O_RDONLY) {
+                // Current open file in write mode.
+                files_status[short_path]->open_mode = 1;
+            }
+        }
+        else {
+            if (fi->flags & O_ACCMODE != O_RDONLY) {
+                // Conflict.
+                free(full_path);
+                *ret = -EACCES;
+                return 0;
+            }
+        }
+        files_status[short_path]->open_number += 1;
+    }
+    else {
+        // File has not been opened.
+        if (files_status.find(short_path) == files_status.end()) {
+            files_status[short_path] = new struct file_status;    
+        }
+
+        if (fi->flags & O_ACCMODE == O_RDONLY) {
+            files_status[short_path]->open_mode = 0;
+        }
+        else {
+            files_status[short_path]->open_mode = 1;
+        }
+
+        files_status[short_path]->open_number = 1;
+    }
+
     fi->fh = open(full_path, fi->flags);
 
     if (fi->fh < 0) {
@@ -165,6 +211,10 @@ int watdfs_release(int *argTypes, void **args) {
 
     if (sys_ret < 0) {
         *ret = -errno;
+    }
+    else {
+        // Only update open number when close call succeed.
+        files_status[short_path]->open_number -= 1;
     }
 
     free(full_path);
