@@ -52,25 +52,13 @@ int watdfs_cli_download(void *userdata, const char *path, struct fuse_file_info 
     off_t file_size = statbuf->st_size;
 
     // Make sys open call.
-    int file_ret = open(full_path, O_RDWR);
+    int file_ret = open(full_path, O_RDWR | O_CREAT, S_IRWXU);
     if (file_ret < 0) {
-        // No file in client, create new one.
-        int mk_ret = mknod(full_path, statbuf->st_mode, statbuf->st_dev);
-        if (mk_ret < 0) {
-            // Mknod failed.
-            free(full_path);
-            delete statbuf;
-            return -errno;
-        }
-
-        // Try to open file after mknod.
-        file_ret = open(full_path, O_RDWR);
-
-        if (file_ret < 0) {
-            free(full_path);
-            delete statbuf;
-            return -errno;
-        }
+        // System call failed.
+        fxn_ret = -errno;
+        free(full_path);
+        delete statbuf;
+        return fxn_ret;
     }
 
     fd_cli = file_ret;
