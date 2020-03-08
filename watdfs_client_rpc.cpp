@@ -584,3 +584,77 @@ int watdfs_cli_utimens_rpc(void *userdata, const char *path,
     return fxn_ret;
     // return -ENOSYS;
 }
+
+int lock(const char *path, rw_lock_mode_t mode) {
+
+    int ARG_COUNT = 3;
+
+    void **args = (void**) malloc(ARG_COUNT * sizeof(void*));
+
+    int arg_types[ARG_COUNT + 1];
+    
+    int pathlen = strlen(path) + 1;
+    
+    int ret_code;
+    
+    arg_types[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16) | pathlen;
+    args[0] = (void*) path;
+    
+    arg_types[1] = (1 << ARG_INPUT) |  (ARG_INT << 16) ;
+    args[1] = (void*)&mode;
+    
+    arg_types[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16) ;
+    args[2] = (void*)&ret_code;
+
+    arg_types[3] = 0;
+    
+    int rpc_ret = rpcCall((char *)"lock", arg_types, args);
+    
+    int fxn_ret = 0;
+    if (rpc_ret < 0) {
+        fxn_ret = -EINVAL;
+    } else {
+        fxn_ret = ret_code;
+    }
+
+    free(args);
+
+    return fxn_ret;
+}
+
+int unlock(const char *path, rw_lock_mode_t lock_mode){
+    
+    int ARG_COUNT = 3;
+
+    void **args = (void**) malloc(ARG_COUNT * sizeof(void*));
+
+    int arg_types[ARG_COUNT + 1];
+    
+    int pathlen = strlen(path) + 1;
+    
+    int ret_code;
+    
+    arg_types[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16) | pathlen;
+    args[0] = (void*) path;
+    
+    arg_types[1] = (1 << ARG_INPUT) |  (ARG_INT << 16) ;
+    args[1] = (void*)&mode;
+    
+    arg_types[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16) ;
+    args[2] = (void*)&ret_code;
+
+    arg_types[3] = 0;
+    
+    int rpc_ret = rpcCall((char *)"unlock", arg_types, args);
+    
+    int fxn_ret = 0;
+    if (rpc_ret < 0) {
+        fxn_ret = -EINVAL;
+    } else {
+        fxn_ret = ret_code;
+    }
+
+    free(args);
+
+    return fxn_ret;
+}

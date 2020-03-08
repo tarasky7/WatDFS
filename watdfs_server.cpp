@@ -174,7 +174,10 @@ int watdfs_open(int *argTypes, void **args) {
     else {
         // File has not been opened.
         if (files_status.find(short_path) == files_status.end()) {
-            files_status[short_path] = new struct file_status;    
+            files_status[short_path] = new struct file_status;   
+            files_status[short_path]->lock = new rw_lock_t;
+            // Init lock.
+            rw_lock_init(files_status[short_path]->lock); 
         }
 
         if (fi->flags & O_ACCMODE == O_RDONLY) {
@@ -215,6 +218,15 @@ int watdfs_release(int *argTypes, void **args) {
     else {
         // Only update open number when close call succeed.
         files_status[short_path]->open_number -= 1;
+    }
+
+    if (files_status[short_path]->open_number == 0) {
+        // Release lock.
+        rw_lock_destroy(files_status[short_path]->lock);
+
+        // Delete file_status
+        delete files_status[short_path]->lock;
+        delete files_status[short_path];
     }
 
     free(full_path);
@@ -338,6 +350,46 @@ int watdfs_utimens(int *argTypes, void **args) {
     }
 
     DLOG("ret is %d\n", *ret);
+    free(full_path);
+
+    return 0;
+}
+
+int watdfs_lock(int *argTypes, void **args) {
+    char *short_path = (char *)args[0];
+    rw_lock_mode_t *mode = (rw_lock_mode_t *)args[1];
+    int *ret = (int *)args[2];
+
+    char *full_path = get_full_path(short_path);
+
+    *ret = 0;
+
+    int sys_ret = rw_lock_lock(files_status[short_path]->lock, *mode);
+
+    if (sys_ret < 0) {
+        *ret = -errno;
+    }
+    
+    free(full_path);
+
+    return 0;
+}
+
+int watdfs_unlock(int *argTypes, void **args) {
+    char *short_path = (char *)args[0];
+    rw_lock_mode_t *mode = (rw_lock_mode_t *)args[1];
+    int *ret = (int *)args[2];
+
+    char *full_path = get_full_path(short_path);
+
+    *ret = 0;
+
+    int sys_ret = rw_lock_unlock(files_status[short_path]->lock, *mode);
+
+    if (sys_ret < 0) {
+        *ret = -errno;
+    }
+    
     free(full_path);
 
     return 0;
@@ -573,6 +625,44 @@ int main(int argc, char *argv[]) {
         argTypes[3] = 0;
 
         ret = rpcRegister((char *)"utimens", argTypes, watdfs_utimens);
+
+        if (ret < 0) {
+            // It may be useful to have debug-printing here.
+            return ret;
+        }
+    }
+
+    {
+        int argTypes[4];
+
+        argTypes[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16) | 1u;
+        
+        argTypes[1] = (1 << ARG_INPUT) | (ARG_INT << 16);
+        
+        argTypes[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16);
+        
+        argTypes[3] = 0;
+
+        ret = rpcRegister((char *)"lock", argTypes, watdfs_lock);
+
+        if (ret < 0) {
+            // It may be useful to have debug-printing here.
+            return ret;
+        }
+    }
+
+    {
+        int argTypes[4];
+
+        argTypes[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16) | 1u;
+        
+        argTypes[1] = (1 << ARG_INPUT) | (ARG_INT << 16);
+        
+        argTypes[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16);
+        
+        argTypes[3] = 0;
+
+        ret = rpcRegister((char *)"unlock", argTypes, watdfs_unlock);
 
         if (ret < 0) {
             // It may be useful to have debug-printing here.
