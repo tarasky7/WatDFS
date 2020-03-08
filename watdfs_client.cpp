@@ -14,17 +14,18 @@ INIT_LOG
 #include <set>
 #include <map>
 #include <sys/stat.h>
+#include <ctime>
 
 struct file_info {
-    int fd_cli; // fd for client
-    int fd_ser; // fd for server
+    int fd_cli; // fd for client, for local call.
+    int fd_ser; // fd for server, for rpc call.
     int flags; // open mode
     time_t tc;
 };
 
 struct global_info {
     char *path_to_cache; // The path to cache file in client.
-    int cache_interval;
+    time_t cache_interval;
     std::set<std::string> opened_files;
     std::map<const char *, file_info *> files_info;
 };
@@ -231,6 +232,7 @@ int watdfs_cli_open(void *userdata, const char *path,
         // Add file path to the set of opened files. This should be done when open succeeded.
         p->opened_files.insert(path);
         p->files_info[path]->flags = fi->flags & O_ACCMODE;
+        p->files_info[path]->tc = time(nullptr);
     }
 
     return fxn_ret;
@@ -279,6 +281,18 @@ int watdfs_cli_read(void *userdata, const char *path, char *buf, size_t size,
     // Read size amount of data at offset of file into buf.
     struct global_info *p = (global_info *)userdata;
     int fd_cli = p->files_info[path]->fd_cli;
+    int flag = p->files_info[path]->flags;
+
+    if (flag == O_WRONLY) {
+        return -EINVAL;
+    }
+
+    if (flag == O_RDONLY) {
+        int fxn_ret = check_read_fresh(userdata, path);
+        if (fxn_ret < 0) {
+            return fxn_ret;
+        }
+    }
 
     int nread = pread(fd_cli, buf, size, offset);
 
@@ -294,6 +308,17 @@ int watdfs_cli_write(void *userdata, const char *path, const char *buf,
     // Write size amount of data at offset of file from buf.
     struct global_info *p = (global_info *)userdata;
     int fd_cli = p->files_info[path]->fd_cli;
+    int flags = p->files_info[path]->flags;
+
+    if (flags == O_RDONLY) {
+        return -EINVAL;
+    }
+
+    int fxn_ret = check_write_fresh(userdata, path);
+
+    if (fxn_ret < 0) {
+        return fxn_ret;
+    }
 
     int nwrite = pwrite(fd_cli, buf, size, offset);
 
@@ -369,6 +394,13 @@ int watdfs_cli_fsync(void *userdata, const char *path,
     // Force a flush of file data.
     int fxn_ret = watdfs_cli_upload(userdata, path, fi);
 
+    if (fxn_ret < 0) {
+        return fxn_ret;
+    }
+
+    // Update tc.
+    ((global_info *)userdata)->files_info[path]->tc = time(nullptr);
+    
     return fxn_ret;
     // return -ENOSYS;
 }
