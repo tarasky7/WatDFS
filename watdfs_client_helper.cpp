@@ -122,14 +122,14 @@ int watdfs_cli_download(void *userdata, const char *path, struct fuse_file_info 
 
     char *buf = (char *)malloc((file_size+1) * sizeof(char));
 
-    // fxn_ret = lock(path, RW_READ_LOCK);
+    fxn_ret = lock(path, RW_READ_LOCK);
 
-    // if (fxn_ret < 0) {
-    //     free(full_path);
-    //     free(buf);
-    //     delete statbuf;
-    //     return fxn_ret;
-    // }
+    if (fxn_ret < 0) {
+        free(full_path);
+        free(buf);
+        delete statbuf;
+        return fxn_ret;
+    }
 
     // Read from server to buf.
     fxn_ret = watdfs_cli_read_rpc(userdata, path, buf, file_size, 0, fi);
@@ -138,17 +138,17 @@ int watdfs_cli_download(void *userdata, const char *path, struct fuse_file_info 
         free(full_path);
         delete statbuf;
         free(buf);
-        // unlock(path, RW_READ_LOCK);
+        unlock(path, RW_READ_LOCK);
         return fxn_ret;
     }
     
-    // fxn_ret = unlock(path, RW_READ_LOCK);
-    // if (fxn_ret < 0) {
-    //     free(full_path);
-    //     delete statbuf;
-    //     free(buf);
-    //     return fxn_ret;
-    // }
+    fxn_ret = unlock(path, RW_READ_LOCK);
+    if (fxn_ret < 0) {
+        free(full_path);
+        delete statbuf;
+        free(buf);
+        return fxn_ret;
+    }
 
     // Write from buf to client file.
     fxn_ret = pwrite(fd_cli, buf, file_size, 0);
@@ -201,14 +201,14 @@ int watdfs_cli_upload(void *userdata, const char *path, struct fuse_file_info *f
         return fxn_ret;
     }
 
-    // fxn_ret = lock(path, RW_WRITE_LOCK);
+    fxn_ret = lock(path, RW_WRITE_LOCK);
 
-    // if (fxn_ret < 0) {
-    //     free(full_path);
-    //     delete statbuf;
-    //     free(buf);
-    //     return fxn_ret;
-    // }
+    if (fxn_ret < 0) {
+        free(full_path);
+        delete statbuf;
+        free(buf);
+        return fxn_ret;
+    }
 
     // First truncate file.
     fxn_ret = watdfs_cli_truncate_rpc(userdata, path, file_size);
@@ -217,7 +217,7 @@ int watdfs_cli_upload(void *userdata, const char *path, struct fuse_file_info *f
         delete statbuf;
         free(full_path);
         free(buf);
-        // unlock(path, RW_WRITE_LOCK);
+        unlock(path, RW_WRITE_LOCK);
         return fxn_ret;
     }
 
@@ -228,7 +228,7 @@ int watdfs_cli_upload(void *userdata, const char *path, struct fuse_file_info *f
         delete statbuf;
         free(full_path);
         free(buf);
-        // unlock(path, RW_WRITE_LOCK);
+        unlock(path, RW_WRITE_LOCK);
         return fxn_ret;
     }
 
@@ -242,11 +242,11 @@ int watdfs_cli_upload(void *userdata, const char *path, struct fuse_file_info *f
         free(full_path);
         free(buf);
         delete statbuf;
-        // unlock(path, RW_WRITE_LOCK);
+        unlock(path, RW_WRITE_LOCK);
         return fxn_ret;
     }
 
-    // fxn_ret = unlock(path, RW_WRITE_LOCK);
+    fxn_ret = unlock(path, RW_WRITE_LOCK);
 
     delete statbuf;
     free(full_path);
