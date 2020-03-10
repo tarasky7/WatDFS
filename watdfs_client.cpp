@@ -10,25 +10,8 @@ INIT_LOG
 #include "rpc.h"
 
 #include "watdfs_client_helper.cpp"
-#include "watdfs_client_rpc.cpp"
-#include <set>
-#include <map>
 #include <sys/stat.h>
 #include <ctime>
-
-struct file_info {
-    int fd_cli; // fd for client, for local call.
-    int fd_ser; // fd for server, for rpc call.
-    int flags; // open mode
-    time_t tc;
-};
-
-struct global_info {
-    char *path_to_cache; // The path to cache file in client.
-    time_t cache_interval;
-    std::set<std::string> opened_files;
-    std::map<const char *, file_info *> files_info;
-};
 
 
 // SETUP AND TEARDOWN
@@ -75,19 +58,24 @@ void watdfs_cli_destroy(void *userdata) {
 // GET FILE ATTRIBUTES
 int watdfs_cli_getattr(void *userdata, const char *path, struct stat *statbuf) {
     // SET UP THE RPC CALL
-    //DLOG("Received getattr call...");
+    DLOG("Received getattr call...");
     global_info *p = (global_info *)userdata;
 
     char *full_path = get_full_path(((global_info *)userdata)->path_to_cache, path);
     
-    struct fuse_file_info *fi = (struct fuse_file_info *) malloc(sizeof(struct fuse_file_info));
+    struct fuse_file_info *fi = (struct fuse_file_info *)malloc(sizeof(struct fuse_file_info));
     
     fi->flags = O_RDONLY;
 
-    int fnx_ret = 0;
+    int fxn_ret = 0;
     if (file_is_open(userdata, path)) {
         if (p->files_info[path]->flags == O_RDONLY) {
-            // TODO: read freshness
+            fxn_ret = check_read_fresh(userdata, path);
+            if (fxn_ret < 0) {
+                free(full_path);
+                free(fi);
+                return fxn_ret;
+            }
         }
         
         fxn_ret = stat(full_path, statbuf);
@@ -188,7 +176,7 @@ int watdfs_cli_mknod(void *userdata, const char *path, mode_t mode, dev_t dev) {
     }
     else {
         // File exists on server.
-        fxn_ret = watdfs_cli_release(useradata, path, fi);
+        fxn_ret = watdfs_cli_release(userdata, path, fi);
 
         if (fxn_ret >= 0) {
             fxn_ret = -EEXIST;
@@ -212,19 +200,20 @@ int watdfs_cli_open(void *userdata, const char *path,
     // Set flags accordingly.
     int server_flag = fi->flags & O_ACCMODE;
 
-    int fxn_ret = watdfs_cli_open_rpc(userdata, path, fi);
+    // int fxn_ret = watdfs_cli_open_rpc(userdata, path, fi);
 
-    if (fxn_ret < 0) {
-        // Rpc or server open call failed.
-        return fxn_ret;
-    }
+    // if (fxn_ret < 0) {
+    //     // Rpc or server open call failed.
+    //     return fxn_ret;
+    // }
 
-    // Set file info structure.
-    p->files_info[path] = new struct file_info;
+    // // Set file info structure.
+    // p->files_info[path] = new struct file_info;
 
-    p->files_info[path]->fd_ser = fi->fh;
+    // DLOG("fi->fh on client %ld\n", fi->fh);
+    // p->files_info[path]->fd_ser = fi->fh;
 
-    fxn_ret = watdfs_cli_download(userdata, path, fi);
+    int fxn_ret = watdfs_cli_download(userdata, path, fi);
 
     fi->flags = server_flag;
 
@@ -311,7 +300,7 @@ int watdfs_cli_write(void *userdata, const char *path, const char *buf,
     int flags = p->files_info[path]->flags;
 
     if (flags == O_RDONLY) {
-        return -EINVAL;
+        return -EMFILE;
     }
 
     int fxn_ret = check_write_fresh(userdata, path);
@@ -400,7 +389,7 @@ int watdfs_cli_fsync(void *userdata, const char *path,
 
     // Update tc.
     ((global_info *)userdata)->files_info[path]->tc = time(nullptr);
-    
+
     return fxn_ret;
     // return -ENOSYS;
 }
@@ -418,13 +407,15 @@ int watdfs_cli_utimens(void *userdata, const char *path,
     fi->flags = O_RDWR;
 
     if (!file_is_open(userdata, path)) {
+
+        DLOG("file is not opened\n");
         int fxn_ret = watdfs_cli_open(userdata, path, fi);
         if (fxn_ret < 0) {
             free(fi);
             free(full_path);
             return fxn_ret;
         }
-
+        DLOG("now change metadata\n");
         fxn_ret = utimensat(0, full_path, ts, 0);
 
         if (fxn_ret < 0) {
@@ -441,15 +432,15 @@ int watdfs_cli_utimens(void *userdata, const char *path,
     }
 
     int flag = p->files_info[path]->flags;
+    DLOG("file flag in utime is %d\n", flag);
 
     if (flag == O_RDONLY) {
         free(full_path);
         free(fi);
-        delete statbuf;
         return -EMFILE;
     }
 
-    fxn_ret = utimensat(0, full_path, ts, 0);
+    int fxn_ret = utimensat(0, full_path, ts, 0);
 
     if (fxn_ret < 0) {
         fxn_ret = -errno;
@@ -457,7 +448,6 @@ int watdfs_cli_utimens(void *userdata, const char *path,
 
     free(full_path);
     free(fi);
-    delete statbuf;
     return fxn_ret;
     // return -ENOSYS;
 }

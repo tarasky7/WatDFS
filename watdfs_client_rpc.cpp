@@ -4,10 +4,9 @@
 //
 
 #include "watdfs_client.h"
-#include "debug.h"
-INIT_LOG
 
 #include "rpc.h"
+#include "rw_lock.h"
 
 // GET FILE ATTRIBUTES
 int watdfs_cli_getattr_rpc(void *userdata, const char *path, struct stat *statbuf) {
@@ -597,13 +596,13 @@ int lock(const char *path, rw_lock_mode_t mode) {
     
     int ret_code;
     
-    arg_types[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16) | pathlen;
-    args[0] = (void*) path;
+    arg_types[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16u) | pathlen;
+    args[0] = (void*)path;
     
-    arg_types[1] = (1 << ARG_INPUT) |  (ARG_INT << 16) ;
+    arg_types[1] = (1 << ARG_INPUT) |  (ARG_INT << 16u) ;
     args[1] = (void*)&mode;
     
-    arg_types[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16) ;
+    arg_types[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16u) ;
     args[2] = (void*)&ret_code;
 
     arg_types[3] = 0;
@@ -622,8 +621,8 @@ int lock(const char *path, rw_lock_mode_t mode) {
     return fxn_ret;
 }
 
-int unlock(const char *path, rw_lock_mode_t lock_mode){
-    
+int unlock(const char *path, rw_lock_mode_t mode){
+
     int ARG_COUNT = 3;
 
     void **args = (void**) malloc(ARG_COUNT * sizeof(void*));
@@ -634,13 +633,13 @@ int unlock(const char *path, rw_lock_mode_t lock_mode){
     
     int ret_code;
     
-    arg_types[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16) | pathlen;
-    args[0] = (void*) path;
+    arg_types[0] = (1 << ARG_INPUT) | (1 << ARG_ARRAY) | (ARG_CHAR << 16u) | pathlen;
+    args[0] = (void*)path;
     
-    arg_types[1] = (1 << ARG_INPUT) |  (ARG_INT << 16) ;
+    arg_types[1] = (1 << ARG_INPUT) |  (ARG_INT << 16u) ;
     args[1] = (void*)&mode;
     
-    arg_types[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16) ;
+    arg_types[2] = (1 << ARG_OUTPUT) | (ARG_INT << 16u) ;
     args[2] = (void*)&ret_code;
 
     arg_types[3] = 0;
