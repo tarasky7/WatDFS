@@ -124,6 +124,8 @@ int watdfs_cli_download(void *userdata, const char *path, struct fuse_file_info 
 
     fxn_ret = lock(path, RW_READ_LOCK);
 
+    DLOG("lock for read is called\n");
+
     if (fxn_ret < 0) {
         free(full_path);
         free(buf);

@@ -40,6 +40,6 @@ By Ziyuan Wu, Student ID: 20822077
    - If write exlucsion is violated on server, return -EACCES.
 4. Test Methods
    - Testing Manually: Run the commands on linux server and client to test all the functions. Open the same file in write mode on 2 clients to test the mutual exclusion on server.
-     - System Calls: 
+     - Commands: touch file_path --> echo "content" > file_path --> cat file_path --> stat file_path
    - Testing in Python: 
 

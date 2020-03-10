@@ -135,6 +135,9 @@ int watdfs_cli_mknod(void *userdata, const char *path, mode_t mode, dev_t dev) {
         }
 
         // TODO: Check freshness.
+        int fxn_ret = check_write_fresh(userdata, path);
+        
+        return fxn_ret;
     }
 
     struct fuse_file_info *fi = (struct fuse_file_info *) malloc(sizeof(struct fuse_file_info));
@@ -371,6 +374,7 @@ int watdfs_cli_truncate(void *userdata, const char *path, off_t newsize) {
     }
 
     // TODO: Write freshness.
+    fxn_ret = check_write_fresh(userdata, path);
     
     free(full_path);
     free(fi);
@@ -445,6 +449,8 @@ int watdfs_cli_utimens(void *userdata, const char *path,
     if (fxn_ret < 0) {
         fxn_ret = -errno;
     }
+
+    fxn_ret = check_write_fresh(userdata, path);
 
     free(full_path);
     free(fi);
