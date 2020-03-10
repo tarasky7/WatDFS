@@ -271,7 +271,7 @@ int watdfs_cli_read(void *userdata, const char *path, char *buf, size_t size,
     struct global_info *p = (global_info *)userdata;
     int fd_cli = p->files_info[path]->fd_cli;
     int flag = p->files_info[path]->flags;
-
+    DLOG("read flag in read call is %d\n", flag);
     if (flag == O_WRONLY) {
         return -EINVAL;
     }

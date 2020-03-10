@@ -261,8 +261,9 @@ int check_read_fresh(void *userdata, const char *path) {
     time_t tc = p->files_info[path]->tc;
     time_t T = time(nullptr);
     time_t t = p->cache_interval;
-
+    DLOG("T is %ld, t is %ld, tc is %ld\n", T, t, tc);
     if (T - tc < t) {
+        DLOG("t-tc <t\n");
         return 0;
     }
 
@@ -278,7 +279,7 @@ int check_read_fresh(void *userdata, const char *path) {
     
     time_t t_client = statbuf->st_mtime;
 
-    fxn_ret = watdfs_cli_getattr(userdata, path, statbuf);
+    fxn_ret = watdfs_cli_getattr_rpc(userdata, path, statbuf);
 
     if (fxn_ret < 0) {
         delete statbuf;
@@ -339,9 +340,11 @@ int check_write_fresh(void *userdata, const char *path) {
     }
 
     time_t t_server = statbuf->st_mtime;
+    DLOG("t_client is %ld, t_server is %ld\n",t_client, t_server);
 
     if (t_client == t_server) {
         // Set tc to current time.
+        DLOG("t_client = t_server\n");
         p->files_info[path]->tc = time(nullptr);
         delete statbuf;
         return 0;
