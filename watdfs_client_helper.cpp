@@ -334,7 +334,7 @@ int check_write_fresh(void *userdata, const char *path) {
     
     time_t t_client = statbuf->st_mtime;
 
-    fxn_ret = watdfs_cli_getattr(userdata, path, statbuf);
+    fxn_ret = watdfs_cli_getattr_rpc(userdata, path, statbuf);
 
     if (fxn_ret < 0) {
         delete statbuf;
