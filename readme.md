@@ -1,5 +1,4 @@
 # System Manual
-By Ziyuan Wu, Student ID: 20822077
 
 1. Design Choices
    - Download: The method for download is `watdfs_cli_download`.
